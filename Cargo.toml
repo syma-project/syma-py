@@ -1,0 +1,15 @@
+[package]
+name = "syma-py"
+version = "0.1.0"
+edition = "2021"
+description = "Python bindings for the Syma symbolic programming language"
+
+[lib]
+name = "syma_py"
+crate-type = ["cdylib"]
+
+[dependencies]
+syma = { path = "../syma" }
+pyo3 = { version = "0.23", features = ["extension-module"] }
+serde_json = "1"
+rug = "1.29"

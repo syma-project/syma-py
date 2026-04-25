@@ -1,0 +1,14 @@
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "syma-py"
+version = "0.1.0"
+description = "Python bindings for the Syma symbolic programming language"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+
+[tool.maturin]
+module-name = "syma_py._native"
+features = ["pyo3/extension-module"]

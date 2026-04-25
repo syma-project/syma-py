@@ -1,6 +1,6 @@
 # syma-py
 
-Python bindings for [Syma](https://github.com/tanganke/syma) — a symbolic-first programming language inspired by Wolfram Language.
+Python bindings for [Syma](https://github.com/syma-project/syma) — a symbolic-first programming language inspired by Wolfram Language.
 
 ## Installation
 

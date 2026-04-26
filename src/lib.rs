@@ -110,10 +110,8 @@ impl PySymaKernel {
         };
 
         // Return the last non-None result
-        for stmt in results.into_iter().rev() {
-            if let Some(stmt_result) = stmt {
-                return Ok(stmt_result_to_python(stmt_result, py));
-            }
+        if let Some(stmt_result) = results.into_iter().rev().flatten().next() {
+            return Ok(stmt_result_to_python(stmt_result, py));
         }
 
         Ok(py.None())

@@ -1,4 +1,4 @@
-#![allow(deprecated)]  // PyO3 0.23 uses deprecated IntoPy (replaced by IntoPyObject in 0.24)
+#![allow(deprecated)] // PyO3 0.23 uses deprecated IntoPy (replaced by IntoPyObject in 0.24)
 
 /// syma-py: PyO3 bindings for the Syma symbolic programming language.
 ///
@@ -41,7 +41,10 @@ impl PySymaValue {
     }
 
     fn __repr__(&self) -> String {
-        format!("SymaValue(type='{}', display='{}')", self.type_tag, self.display)
+        format!(
+            "SymaValue(type='{}', display='{}')",
+            self.type_tag, self.display
+        )
     }
 
     /// Best-effort conversion to a native Python object.
@@ -193,8 +196,7 @@ fn json_value_to_python<'py>(jv: &serde_json::Value, py: Python<'py>) -> PyObjec
         JValue::Number(n) => n.as_f64().unwrap_or(0.0).into_py(py),
         JValue::String(s) => s.into_py(py),
         JValue::Array(arr) => {
-            let items: Vec<PyObject> =
-                arr.iter().map(|v| json_value_to_python(v, py)).collect();
+            let items: Vec<PyObject> = arr.iter().map(|v| json_value_to_python(v, py)).collect();
             PyList::new(py, &items).unwrap().into()
         }
         JValue::Object(obj) => {
@@ -213,24 +215,21 @@ fn json_value_to_python<'py>(jv: &serde_json::Value, py: Python<'py>) -> PyObjec
                         Err(_) => py.None(),
                     }
                 }
-                Some("real") => {
-                    obj.get("v")
-                        .and_then(|v| v.as_f64())
-                        .unwrap_or(0.0)
-                        .into_py(py)
-                }
-                Some("str") => {
-                    obj.get("v")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or("")
-                        .into_py(py)
-                }
-                Some("bool") => {
-                    obj.get("v")
-                        .and_then(|v| v.as_bool())
-                        .unwrap_or(false)
-                        .into_py(py)
-                }
+                Some("real") => obj
+                    .get("v")
+                    .and_then(|v| v.as_f64())
+                    .unwrap_or(0.0)
+                    .into_py(py),
+                Some("str") => obj
+                    .get("v")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .into_py(py),
+                Some("bool") => obj
+                    .get("v")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false)
+                    .into_py(py),
                 Some("null") => py.None(),
                 Some("list") => {
                     if let Some(arr) = obj.get("v").and_then(|v| v.as_array()) {
@@ -278,8 +277,10 @@ fn serde_json_value_to_pyobject<'py>(jv: &serde_json::Value, py: Python<'py>) ->
         }
         JValue::String(s) => s.into_py(py),
         JValue::Array(arr) => {
-            let items: Vec<PyObject> =
-                arr.iter().map(|v| serde_json_value_to_pyobject(v, py)).collect();
+            let items: Vec<PyObject> = arr
+                .iter()
+                .map(|v| serde_json_value_to_pyobject(v, py))
+                .collect();
             PyList::new(py, &items).unwrap().into()
         }
         JValue::Object(obj) => {

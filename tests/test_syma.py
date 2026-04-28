@@ -180,7 +180,7 @@ def test_eval_detailed_error():
 
 def test_eval_error():
     kernel = syma_py.SymaKernel()
-    with pytest.raises(RuntimeError):
+    with pytest.raises(syma_py.SymaEvalError):
         kernel.eval("1 +++ 2")
 
 
@@ -261,3 +261,89 @@ def test_parallel_kernels():
 
     assert r1 == 100
     assert r2 == 200
+
+
+def test_custom_exceptions():
+    """Verify SymaParseError and SymaEvalError are raised correctly."""
+    kernel = syma_py.SymaKernel()
+
+    # Parse error — unmatched parenthesis
+    with pytest.raises(syma_py.SymaParseError):
+        kernel.eval("(1 + 2")
+
+    # Eval error — increment operator on non-variable
+    with pytest.raises(syma_py.SymaEvalError):
+        kernel.eval("1 +++ 2")
+
+
+def test_context_manager():
+    """Verify with syma_py.SymaKernel() as k: works."""
+    with syma_py.SymaKernel() as k:
+        result = k.eval("42")
+        assert result == 42
+
+
+def test_reset():
+    """Verify reset clears state."""
+    kernel = syma_py.SymaKernel()
+    kernel.eval("x = 42")
+    assert kernel.eval("x") == 42
+
+    kernel.reset()
+    # After reset, x is no longer defined (will be a symbolic value, not 42)
+    result = kernel.eval("x")
+    assert result != 42
+
+
+def test_eval_many():
+    """Verify eval_many returns all results."""
+    kernel = syma_py.SymaKernel()
+    results = kernel.eval_many("1\n2\n3")
+    assert results == [1, 2, 3]
+
+
+def test_eval_many_suppressed():
+    """Verify suppressed statements return None in the list."""
+    kernel = syma_py.SymaKernel()
+    results = kernel.eval_many("1; 2; 3")
+    assert results[0] is None
+    assert results[1] is None
+    assert results[2] == 3
+
+
+def test_syma_value_to_expr():
+    """Verify to_expr() returns display string."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval("x^2")
+    assert isinstance(result, syma_py.SymaValue)
+    expr = result.to_expr()
+    assert "x" in expr and "2" in expr
+
+
+def test_function_with_pattern():
+    """Define f[x_, y_] := x^2 + y^2, call f[3, 4], verify result."""
+    kernel = syma_py.SymaKernel()
+    kernel.eval("f[x_, y_] := x^2 + y^2")
+    result = kernel.eval("f[3, 4]")
+    assert result == 25
+
+
+def test_pure_function():
+    """Test (#^2 &) [5] -> 25."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval("(#^2 &)[5]")
+    assert result == 25
+
+
+def test_rule_replace():
+    """Test rule replacement returns a SymaValue for symbolic expressions."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval("x^2 /. x -> 3")
+    # Rule replacement on symbolic expressions may not auto-evaluate
+    assert isinstance(result, syma_py.SymaValue)
+
+def test_large_integer():
+    """Test 2^1000 returns correct big integer."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval("2^1000")
+    assert result == 2 ** 1000

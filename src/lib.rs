@@ -6,7 +6,7 @@
 use std::collections::HashMap;
 use std::ffi::CString;
 
-use pyo3::exceptions::{PyRuntimeError, PyTypeError};
+use pyo3::exceptions::{PyRuntimeError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 use serde_json::Value as JValue;
@@ -14,6 +14,43 @@ use serde_json::Value as JValue;
 use syma::ffi::marshal::{json_val_to_value_full, value_to_json_full};
 use syma::kernel::{StatementResult, SymaKernel};
 use syma::value::Value;
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Custom Python exceptions
+// ═══════════════════════════════════════════════════════════════════════════════
+
+#[pyclass(extends=PyValueError, name="SymaParseError", module="syma_py")]
+struct SymaParseError {}
+
+#[pymethods]
+impl SymaParseError {
+    #[new]
+    fn new(_msg: Option<String>) -> Self {
+        SymaParseError {}
+    }
+}
+
+#[pyclass(extends=PyRuntimeError, name="SymaEvalError", module="syma_py")]
+struct SymaEvalError {}
+
+#[pymethods]
+impl SymaEvalError {
+    #[new]
+    fn new(_msg: Option<String>) -> Self {
+        SymaEvalError {}
+    }
+}
+
+#[pyclass(extends=PyValueError, name="SymaLexError", module="syma_py")]
+struct SymaLexError {}
+
+#[pymethods]
+impl SymaLexError {
+    #[new]
+    fn new(_msg: Option<String>) -> Self {
+        SymaLexError {}
+    }
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // SymaValue — Python wrapper for non-native Syma types
@@ -67,6 +104,11 @@ impl PySymaValue {
         }
         serde_json_value_to_pyobject(&self.json_value, py)
     }
+
+    /// Return the display string representation of this value.
+    fn to_expr(&self) -> String {
+        self.display.clone()
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -80,6 +122,7 @@ impl PySymaValue {
 ///     k = SymaKernel()
 ///     result = k.eval("1 + 2")  # → 3
 #[pyclass(name = "SymaKernel", module = "syma_py")]
+#[derive(Clone)]
 struct PySymaKernel {
     kernel: SymaKernel,
 }
@@ -98,13 +141,20 @@ impl PySymaKernel {
     /// Common types (int, float, str, bool, None, list, dict) are converted
     /// to native Python objects. Other types are returned as SymaValue.
     ///
-    /// Raises RuntimeError on parse/eval errors.
+    /// Raises SymaLexError for lexical errors, SymaParseError for parse errors,
+    /// and SymaEvalError for evaluation errors.
     fn eval(&self, py: Python<'_>, code: &str) -> PyResult<PyObject> {
         let kr = self.kernel.eval(code);
 
         if !kr.success {
             let msg = kr.error.unwrap_or_else(|| "Evaluation failed".to_string());
-            return Err(PyRuntimeError::new_err(msg));
+            if msg.contains("Lexical") {
+                return Err(PyErr::from_type(py.get_type::<SymaLexError>(), msg));
+            } else if msg.contains("Parse") {
+                return Err(PyErr::from_type(py.get_type::<SymaParseError>(), msg));
+            } else {
+                return Err(PyErr::from_type(py.get_type::<SymaEvalError>(), msg));
+            }
         }
 
         let results = match kr.results {
@@ -141,6 +191,31 @@ impl PySymaKernel {
         kernel_result_to_python(kr, py)
     }
 
+    /// Evaluate Syma code and return ALL statement results as a Python list.
+    ///
+    /// Unlike eval() which returns only the last result, this returns every
+    /// statement result in order. Suppressed statements (ending with `;`)
+    /// produce None entries in the list.
+    fn eval_many(&self, py: Python<'_>, code: &str) -> PyResult<Vec<PyObject>> {
+        let kr = self.kernel.eval(code);
+        if !kr.success {
+            let msg = kr.error.unwrap_or_else(|| "Evaluation failed".to_string());
+            return Err(PyRuntimeError::new_err(msg));
+        }
+        let results = match kr.results {
+            Some(r) => r,
+            None => return Ok(vec![]),
+        };
+        results.into_iter()
+            .map(|opt_stmt| {
+                match opt_stmt {
+                    Some(stmt) => Ok(stmt_result_to_python(stmt, py)),
+                    None => Ok(py.None()),
+                }
+            })
+            .collect()
+    }
+
     /// Get a variable from the Syma environment.
     ///
     /// Returns None if the variable is not defined.
@@ -171,6 +246,21 @@ impl PySymaKernel {
         }
         Ok(dict.into())
     }
+
+    /// Reset the kernel, clearing all state (variables, function definitions, etc.).
+    fn reset(&mut self) {
+        self.kernel = SymaKernel::new();
+    }
+
+    /// Context manager support — __enter__.
+    fn __enter__(&self, py: Python<'_>) -> PyResult<Py<Self>> {
+        Py::new(py, self.clone())
+    }
+
+    /// Context manager support — __exit__.
+    fn __exit__(&self, _exc_type: Bound<'_, PyAny>, _exc_val: Bound<'_, PyAny>, _exc_tb: Bound<'_, PyAny>) -> PyResult<()> {
+        Ok(())
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -181,6 +271,9 @@ impl PySymaKernel {
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<PySymaKernel>()?;
     m.add_class::<PySymaValue>()?;
+    m.add("SymaParseError", m.py().get_type::<SymaParseError>())?;
+    m.add("SymaEvalError", m.py().get_type::<SymaEvalError>())?;
+    m.add("SymaLexError", m.py().get_type::<SymaLexError>())?;
     Ok(())
 }
 

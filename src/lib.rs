@@ -20,35 +20,59 @@ use syma::value::Value;
 // ═══════════════════════════════════════════════════════════════════════════════
 
 #[pyclass(extends=PyValueError, name="SymaParseError", module="syma_py")]
-struct SymaParseError {}
+struct SymaParseError {
+    msg: String,
+}
 
 #[pymethods]
 impl SymaParseError {
     #[new]
-    fn new(_msg: Option<String>) -> Self {
-        SymaParseError {}
+    fn new(msg: Option<String>) -> Self {
+        SymaParseError {
+            msg: msg.unwrap_or_default(),
+        }
+    }
+
+    fn __str__(&self) -> String {
+        self.msg.clone()
     }
 }
 
 #[pyclass(extends=PyRuntimeError, name="SymaEvalError", module="syma_py")]
-struct SymaEvalError {}
+struct SymaEvalError {
+    msg: String,
+}
 
 #[pymethods]
 impl SymaEvalError {
     #[new]
-    fn new(_msg: Option<String>) -> Self {
-        SymaEvalError {}
+    fn new(msg: Option<String>) -> Self {
+        SymaEvalError {
+            msg: msg.unwrap_or_default(),
+        }
+    }
+
+    fn __str__(&self) -> String {
+        self.msg.clone()
     }
 }
 
 #[pyclass(extends=PyValueError, name="SymaLexError", module="syma_py")]
-struct SymaLexError {}
+struct SymaLexError {
+    msg: String,
+}
 
 #[pymethods]
 impl SymaLexError {
     #[new]
-    fn new(_msg: Option<String>) -> Self {
-        SymaLexError {}
+    fn new(msg: Option<String>) -> Self {
+        SymaLexError {
+            msg: msg.unwrap_or_default(),
+        }
+    }
+
+    fn __str__(&self) -> String {
+        self.msg.clone()
     }
 }
 
@@ -149,11 +173,11 @@ impl PySymaKernel {
         if !kr.success {
             let msg = kr.error.unwrap_or_else(|| "Evaluation failed".to_string());
             if msg.contains("Lexical") {
-                return Err(PyErr::from_type(py.get_type::<SymaLexError>(), msg));
+                return Err(PyErr::new::<SymaLexError, _>(Some(msg)));
             } else if msg.contains("Parse") {
-                return Err(PyErr::from_type(py.get_type::<SymaParseError>(), msg));
+                return Err(PyErr::new::<SymaParseError, _>(Some(msg)));
             } else {
-                return Err(PyErr::from_type(py.get_type::<SymaEvalError>(), msg));
+                return Err(PyErr::new::<SymaEvalError, _>(Some(msg)));
             }
         }
 
@@ -301,11 +325,24 @@ fn json_value_to_python<'py>(jv: &serde_json::Value, py: Python<'py>) -> PyObjec
                     if let Ok(n) = s.parse::<i64>() {
                         return n.into_py(py);
                     }
-                    // Arbitrary precision via Python's int()
-                    let code = CString::new(format!("int('{}')", s)).unwrap();
-                    match py.eval(&code, None, None) {
-                        Ok(v) => v.into_py(py),
-                        Err(_) => py.None(),
+                    // Arbitrary precision — build via Python int literal safely.
+                    // The string comes from syma's JSON, so it's a numeric string.
+                    // We validate it contains only digits and optional sign.
+                    let trimmed = s.trim();
+                    let (sign, digits) = if let Some(stripped) = trimmed.strip_prefix('-') {
+                        ("-", stripped)
+                    } else {
+                        ("", trimmed)
+                    };
+                    if digits.chars().all(|c| c.is_ascii_digit()) && !digits.is_empty() {
+                        let literal = format!("{}{}", sign, digits);
+                        let code = CString::new(format!("int('{}')", literal)).unwrap();
+                        match py.eval(&code, None, None) {
+                            Ok(v) => v.into_py(py),
+                            Err(_) => py.None(),
+                        }
+                    } else {
+                        py.None()
                     }
                 }
                 Some("real") => obj

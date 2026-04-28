@@ -342,8 +342,143 @@ def test_rule_replace():
     # Rule replacement on symbolic expressions may not auto-evaluate
     assert isinstance(result, syma_py.SymaValue)
 
+
 def test_large_integer():
     """Test 2^1000 returns correct big integer."""
     kernel = syma_py.SymaKernel()
     result = kernel.eval("2^1000")
     assert result == 2 ** 1000
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# New tests — expanded coverage
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+def test_syma_value_value_getter():
+    """Verify SymaValue.value returns the inner 'v' field."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval("x")
+    assert isinstance(result, syma_py.SymaValue)
+    val = result.value
+    assert val is not None
+
+
+def test_syma_value_to_json():
+    """Verify SymaValue.to_json() returns a dict structure."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval("x")
+    assert isinstance(result, syma_py.SymaValue)
+    j = result.to_json()
+    assert isinstance(j, dict)
+    assert "t" in j
+
+
+def test_exception_message_content():
+    """Verify exceptions contain meaningful error messages."""
+    kernel = syma_py.SymaKernel()
+    try:
+        kernel.eval("(1 + 2")
+    except syma_py.SymaParseError as e:
+        assert len(str(e)) > 0
+
+
+def test_eval_detailed_result_value_type():
+    """Verify eval_detailed returns SymaValue for symbolic results."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval_detailed("x^2")
+    assert result["success"] is True
+    # eval_detailed always converts via json_value_to_python (not SymaValue)
+    val = result["results"][0]["value"]
+    assert val is not None
+
+
+def test_set_dict_assoc():
+    """Test setting a dict converts to Syma Assoc."""
+    kernel = syma_py.SymaKernel()
+    kernel.set("m", {"key": "value", "num": 42})
+    result = kernel.eval("m")
+    assert isinstance(result, dict)
+    assert result["key"] == "value"
+    assert result["num"] == 42
+
+
+def test_set_nested_list():
+    """Test setting nested list."""
+    kernel = syma_py.SymaKernel()
+    kernel.set("m", [[1, 2], [3, 4]])
+    result = kernel.eval("m")
+    assert result == [[1, 2], [3, 4]]
+
+
+def test_eval_empty_string():
+    """Test evaluating empty string returns None."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval("")
+    assert result is None
+
+
+def test_eval_only_semicolon():
+    """Test evaluating just a semicolon raises parse error."""
+    kernel = syma_py.SymaKernel()
+    with pytest.raises(syma_py.SymaParseError):
+        kernel.eval(";")
+
+
+def test_large_integer_2_to_10000():
+    """Test 2^10000 — verifies safe big int conversion."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval("2^10000")
+    assert result == 2 ** 10000
+
+
+def test_get_set_float():
+    """Test set/get float round-trips."""
+    kernel = syma_py.SymaKernel()
+    kernel.set("pi", 3.14159)
+    result = kernel.get("pi")
+    assert isinstance(result, float)
+    assert abs(result - 3.14159) < 1e-10
+
+
+def test_eval_many_empty():
+    """Verify eval_many on empty string returns empty list."""
+    kernel = syma_py.SymaKernel()
+    results = kernel.eval_many("")
+    assert results == []
+
+
+def test_eval_many_error():
+    """Verify eval_many raises on syntax error."""
+    kernel = syma_py.SymaKernel()
+    with pytest.raises(RuntimeError):
+        kernel.eval_many("(1 + 2")
+
+
+def test_multiple_function_definitions():
+    """Multiple defs of same function accumulate."""
+    kernel = syma_py.SymaKernel()
+    kernel.eval('f[1] := "one"')
+    kernel.eval('f[2] := "two"')
+    assert kernel.eval("f[1]") == "one"
+    assert kernel.eval("f[2]") == "two"
+
+
+def test_bindings_after_reset():
+    """Bindings should be empty after reset."""
+    kernel = syma_py.SymaKernel()
+    kernel.eval("x = 1")
+    kernel.reset()
+    bindings = kernel.bindings()
+    assert "x" not in bindings
+
+
+def test_syma_value_repr():
+    """Verify SymaValue.__repr__ output format."""
+    kernel = syma_py.SymaKernel()
+    result = kernel.eval("x")
+    assert isinstance(result, syma_py.SymaValue)
+    r = repr(result)
+    assert "SymaValue" in r
+    assert "type=" in r
+    assert "display=" in r

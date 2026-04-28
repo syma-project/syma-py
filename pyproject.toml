@@ -9,6 +9,15 @@ description = "Python bindings for the Syma symbolic programming language"
 requires-python = ">=3.10"
 license = { text = "MIT" }
 
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff", "mypy"]
+
 [tool.maturin]
 module-name = "syma_py._native"
 features = ["pyo3/extension-module"]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

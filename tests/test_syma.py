@@ -283,6 +283,21 @@ def test_context_manager():
         assert result == 42
 
 
+def test_context_manager_yields_same_kernel():
+    """__enter__ must return the same kernel, not a clone."""
+    kernel = syma_py.SymaKernel()
+    with kernel as k:
+        assert k is kernel
+
+
+def test_context_manager_preserves_state():
+    """State mutated through the `as` binding must survive the with block."""
+    kernel = syma_py.SymaKernel()
+    with kernel as k:
+        k.eval("x = 42")
+    assert kernel.eval("x") == 42
+
+
 def test_reset():
     """Verify reset clears state."""
     kernel = syma_py.SymaKernel()

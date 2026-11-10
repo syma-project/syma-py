@@ -172,9 +172,11 @@ impl PySymaKernel {
 
         if !kr.success {
             let msg = kr.error.unwrap_or_else(|| "Evaluation failed".to_string());
-            if msg.contains("Lexical") {
+            // The kernel prefixes lexer/parser failures with "Lexical error:"
+            // and "Parse error:" respectively (see syma::kernel).
+            if msg.starts_with("Lexical error") {
                 return Err(PyErr::new::<SymaLexError, _>(Some(msg)));
-            } else if msg.contains("Parse") {
+            } else if msg.starts_with("Parse error") {
                 return Err(PyErr::new::<SymaParseError, _>(Some(msg)));
             } else {
                 return Err(PyErr::new::<SymaEvalError, _>(Some(msg)));
@@ -230,12 +232,11 @@ impl PySymaKernel {
             Some(r) => r,
             None => return Ok(vec![]),
         };
-        results.into_iter()
-            .map(|opt_stmt| {
-                match opt_stmt {
-                    Some(stmt) => Ok(stmt_result_to_python(stmt, py)),
-                    None => Ok(py.None()),
-                }
+        results
+            .into_iter()
+            .map(|opt_stmt| match opt_stmt {
+                Some(stmt) => Ok(stmt_result_to_python(stmt, py)),
+                None => Ok(py.None()),
             })
             .collect()
     }
@@ -277,12 +278,20 @@ impl PySymaKernel {
     }
 
     /// Context manager support — __enter__.
-    fn __enter__(&self, py: Python<'_>) -> PyResult<Py<Self>> {
-        Py::new(py, self.clone())
+    ///
+    /// Returns a reference to the *same* kernel (not a clone), so state
+    /// mutated through the `as` binding persists after the `with` block.
+    fn __enter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
     }
 
     /// Context manager support — __exit__.
-    fn __exit__(&self, _exc_type: Bound<'_, PyAny>, _exc_val: Bound<'_, PyAny>, _exc_tb: Bound<'_, PyAny>) -> PyResult<()> {
+    fn __exit__(
+        &self,
+        _exc_type: Bound<'_, PyAny>,
+        _exc_val: Bound<'_, PyAny>,
+        _exc_tb: Bound<'_, PyAny>,
+    ) -> PyResult<()> {
         Ok(())
     }
 }
@@ -589,4 +598,38 @@ fn python_to_syma_value(obj: &Bound<'_, PyAny>, py: Python<'_>) -> PyResult<Valu
         "Unsupported type '{}' for Syma value conversion",
         obj.get_type().name()?
     )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wraps_only_non_native_values() {
+        for tag in ["sym", "call", "func", "rule"] {
+            assert!(
+                should_wrap_in_syma_value(&serde_json::json!({ "t": tag })),
+                "{tag} should be wrapped"
+            );
+        }
+        for tag in ["int", "real", "str", "bool", "null", "list", "assoc"] {
+            assert!(
+                !should_wrap_in_syma_value(&serde_json::json!({ "t": tag })),
+                "{tag} should not be wrapped"
+            );
+        }
+        // Non-object JSON is never wrapped.
+        assert!(!should_wrap_in_syma_value(&serde_json::json!("plain")));
+    }
+
+    #[test]
+    fn big_integer_json_converts_exactly() {
+        Python::with_gil(|py| {
+            let jv =
+                serde_json::json!({ "t": "int", "v": "340282366920938463463374607431768211456" });
+            let obj = json_value_to_python(&jv, py);
+            let s = obj.bind(py).str().unwrap().to_string();
+            assert_eq!(s, "340282366920938463463374607431768211456");
+        });
+    }
 }

@@ -23,9 +23,14 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
+      # syma-py depends on the sibling `syma` crate via `../syma`.
       - uses: actions/checkout@v4
         with:
-          submodules: recursive
+          path: syma-py
+      - uses: actions/checkout@v4
+        with:
+          repository: syma-project/syma
+          path: syma
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
       - name: Install system dependencies
@@ -43,15 +48,18 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Create venv + install tools
+        working-directory: syma-py
         run: |
           python -m venv .venv
           . .venv/bin/activate
           pip install --upgrade pip maturin pytest
       - name: Build extension
+        working-directory: syma-py
         run: |
           . .venv/bin/activate
           maturin develop
       - name: Pytest
+        working-directory: syma-py
         run: |
           . .venv/bin/activate
           python -m pytest -v --tb=short

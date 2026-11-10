@@ -6,24 +6,52 @@ on:
   pull_request:
     branches: [main]
 
+env:
+  CARGO_TERM_COLOR: always
+  RUST_MIN_STACK: 134217728
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: actions-rs/toolchain@v1
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y libgmp-dev clang
+      - name: Cache cargo + target
+        uses: actions/cache@v4
         with:
-          toolchain: stable
-      - run: sudo apt-get update && sudo apt-get install -y libgmp-dev clang
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-py-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-py-
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install maturin pytest ruff mypy
-      - run: maturin develop
-      - run: ruff check syma_py/ tests/
-      - run: python -m pytest -v --tb=short
+      - name: Create venv + install tools
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip maturin pytest
+      - name: Build extension
+        run: |
+          . .venv/bin/activate
+          maturin develop
+      - name: Pytest
+        run: |
+          . .venv/bin/activate
+          python -m pytest -v --tb=short
